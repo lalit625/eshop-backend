@@ -1,43 +1,69 @@
-const dotenv = require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const bodyParser = require("body-parser");
-const sendEmail = require("./utils/sendEmail");
+const stripe = require("stripe")("sk_test_51MRXkxSCngDI2lxAdo0B4xFZz8ssv4K6yu3XBn6GcELDMJGOJHqno9gujh47RgKccLA1sshkHfgOTR7Idb3GCVex004kJgQKVH");
 
 const app = express();
-
-// Middleware
-app.use(express.json());
-app.use(bodyParser.json());
 app.use(cors());
+app.use(express.json());
+const path=require("path")
 
-// Route
+/* if(process.env.NODE_ENV==="production")
+{
+    app.use(express.static("build"));
+    app.get("*",(req, res)=>
+    {
+        res.sendFile(path.resolve(__dirname,"build","index.html"))
+    });
+} */
+
+
 app.get("/", (req, res) => {
-  res.send("Home Page");
+  res.send("Welcome to eShop website.");
 });
 
-app.post("/api/sendemail", async (req, res) => {
-  const { email } = req.body;
+const array = [];
+const calculateOrderAmount = (items) => {
+  items.map((item) => {
+    const { price, cartQuantity } = item;
+    const cartItemAmount = price * cartQuantity;
+    return array.push(cartItemAmount);
+  });
+  const totalAmount = array.reduce((a, b) => {
+    return a + b;
+  }, 0);
 
-  try {
-    const send_to = email;
-    const sent_from = process.env.EMAIL_USER;
-    const reply_to = email;
-    const subject = "Thank You Message From NodeCourse";
-    const message = `
-        <h3>Hello Zino</h3>
-        <p>Thank for your YouTube Tutorials</p>
-        <p>Regards...</p>
-    `;
+  return totalAmount * 100;
+};
 
-    await sendEmail(subject, message, send_to, sent_from, reply_to);
-    res.status(200).json({ success: true, message: "Email Sent" });
-  } catch (error) {
-    res.status(500).json(error.message);
-  }
+app.post("/create-payment-intent", async (req, res) => {
+  const { items, shipping, description } = req.body;
+
+  // Create a PaymentIntent with the order amount and currency
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: calculateOrderAmount(items),
+    currency: "inr",
+    automatic_payment_methods: {
+      enabled: true,
+    },
+    description,
+    shipping: {
+      address: {
+        line1: shipping.line1,
+        line2: shipping.line2,
+        city: shipping.city,
+        country: shipping.country,
+        postal_code: shipping.postal_code,
+      },
+      name: shipping.name,
+      phone: shipping.phone,
+    },
+    // receipt_email: customerEmail
+  });
+
+  res.send({
+    clientSecret: paymentIntent.client_secret,
+  });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}...`);
-});
+const PORT = process.env.PORT || 4242;
+app.listen(PORT, () => console.log(`Node server listening on port ${PORT}`));
